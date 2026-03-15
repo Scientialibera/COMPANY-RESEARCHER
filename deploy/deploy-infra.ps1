@@ -133,6 +133,34 @@ function Ensure-FunctionIndexed {
     throw "Function '$expected' was not indexed after trigger sync retries."
 }
 
+function Ensure-EventSubscriptionAzureFunction {
+    param(
+        [string]$SourceResourceId,
+        [string]$EventSubscriptionName,
+        [string]$SubjectBeginsWith,
+        [string]$SubjectEndsWith,
+        [string]$FunctionResourceId
+    )
+
+    $deadline = (Get-Date).AddMinutes(5)
+    do {
+        az eventgrid event-subscription create `
+          --name $EventSubscriptionName `
+          --source-resource-id $SourceResourceId `
+          --included-event-types Microsoft.Storage.BlobCreated `
+          --subject-begins-with $SubjectBeginsWith `
+          --subject-ends-with $SubjectEndsWith `
+          --endpoint-type azurefunction `
+          --endpoint $FunctionResourceId | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+        Start-Sleep -Seconds 10
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Failed to create Event Grid subscription '$EventSubscriptionName' with Azure Function endpoint."
+}
+
 if (-not (Test-Path $ConfigPath)) {
     throw "Config file not found: $ConfigPath"
 }
@@ -370,14 +398,12 @@ if ([bool]$config.deployment.deploy_function_resources) {
         Start-Sleep -Seconds 5
     }
 
-    az eventgrid event-subscription create `
-      --name $eventSubName `
-      --source-resource-id $sourceResourceId `
-      --included-event-types Microsoft.Storage.BlobCreated `
-      --subject-begins-with "/blobServices/default/containers/$sourceContainer/blobs/" `
-      --subject-ends-with $indicatorFileName `
-      --endpoint-type azurefunction `
-      --endpoint $functionResourceId | Out-Null
+    Ensure-EventSubscriptionAzureFunction `
+      -SourceResourceId $sourceResourceId `
+      -EventSubscriptionName $eventSubName `
+      -SubjectBeginsWith "/blobServices/default/containers/$sourceContainer/blobs/" `
+      -SubjectEndsWith $indicatorFileName `
+      -FunctionResourceId $functionResourceId
 }
 
 if ([bool]$config.deployment.deploy_openai_resources) {

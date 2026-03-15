@@ -14,6 +14,22 @@ Everything runs in Azure using Blob Storage + Azure OpenAI + managed identity.
 - Agent 2: strategy classification + 5 sales ideas (single function call)
 - Output: result JSON in sink container (timestamp suffix enabled)
 
+[![Company Researcher Architecture](config/architecture.png)](config/architecture.png)
+
+## Step-by-step runtime flow
+
+1. Company data is uploaded to `source-companies/<company>/company_profile.json`.
+2. A marker blob is created at `source-companies/<company>/_READY` (or queued via manual endpoint).
+3. Event Grid routes the blob-created event to `CompanyResearchBlobTrigger`.
+4. The function reads:
+   - company profile from `source-companies`
+   - shared profile from `additional-company-info`
+   - stage prompts from `prompts`
+   - function definition from `function-definitions`
+5. Agent 1 generates deep research with web search.
+6. Agent 2 classifies revenue and returns 5 sales ideas through function calling.
+7. Final payload is written to `research-output/<company>/research_result_<timestamp>.json`.
+
 ## Repository Layout
 
 - `function_app.py` - function entry points (blob + manual HTTP queue endpoint)
