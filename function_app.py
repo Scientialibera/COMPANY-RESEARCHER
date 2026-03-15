@@ -31,6 +31,21 @@ def _extract_folder_from_blob_name(blob_name: str) -> str:
     return parts[0]
 
 
+def _blob_name_from_event(subject: str, data_url: str) -> str:
+    # Storage Event Grid subject format:
+    # /blobServices/default/containers/<container>/blobs/<blob path>
+    marker = "/blobs/"
+    if marker in subject:
+        return subject.split(marker, 1)[1]
+
+    if data_url:
+        parsed = urlparse(data_url)
+        parts = [part for part in parsed.path.split("/") if part]
+        if len(parts) >= 2:
+            return "/".join(parts[1:])
+    raise ValueError("Could not determine blob name from Event Grid payload.")
+
+
 def _extract_folder_from_url(folder_url: str) -> str:
     parsed = urlparse(folder_url)
     parts = [part for part in parsed.path.split("/") if part]
@@ -72,14 +87,11 @@ async def _enqueue_indicator_blob(company_folder: str) -> str:
 
 
 @app.function_name(name="CompanyResearchBlobTrigger")
-@app.blob_trigger(
-    arg_name="indicator_blob",
-    path="%SOURCE_CONTAINER%/{name}",
-    connection="AzureWebJobsStorage",
-)
-async def company_research_blob_trigger(indicator_blob: func.InputStream) -> None:
+@app.event_grid_trigger(arg_name="event")
+async def company_research_blob_trigger(event: func.EventGridEvent) -> None:
     config = load_app_config()
-    blob_name = indicator_blob.name
+    event_data = event.get_json() or {}
+    blob_name = _blob_name_from_event(subject=event.subject or "", data_url=event_data.get("url", ""))
     company_folder = _extract_folder_from_blob_name(blob_name)
     indicator_name = blob_name.split("/")[-1]
 

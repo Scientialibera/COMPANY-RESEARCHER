@@ -66,6 +66,7 @@ This script idempotently:
 - uploads shared profile + stage prompts + function definition to blob storage
 - enables managed identity
 - assigns RBAC for both function identity and script executor (no keys required)
+- registers `Microsoft.EventGrid`, syncs function triggers, and creates storage->function Event Grid subscription (`--endpoint-type azurefunction`) for `_READY` blobs
 - sets Function App settings
 
 ### 5) Deploy function code

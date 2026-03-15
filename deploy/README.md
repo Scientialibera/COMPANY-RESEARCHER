@@ -8,6 +8,7 @@ CLI-only deployment.
    - deploys infra (idempotent)
    - uploads shared profile + prompts + function definition from `deploy/assets/`
    - sets app settings + managed identity + RBAC (executor + function identity)
+   - registers Event Grid provider, syncs function triggers, and creates Event Grid subscription with Azure Function destination type
 
 2. `deploy-function.ps1`
    - publishes Azure Functions code

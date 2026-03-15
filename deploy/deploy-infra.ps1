@@ -87,6 +87,52 @@ function Upload-BlobFromFile {
     }
 }
 
+function Ensure-ProviderRegistered {
+    param([string]$Namespace)
+    $state = az provider show --namespace $Namespace --query registrationState -o tsv 2>$null
+    if ($state -ne "Registered") {
+        Write-Step "Registering provider '$Namespace'."
+        az provider register --namespace $Namespace | Out-Null
+        $deadline = (Get-Date).AddMinutes(10)
+        do {
+            Start-Sleep -Seconds 10
+            $state = az provider show --namespace $Namespace --query registrationState -o tsv 2>$null
+            if ($state -eq "Registered") {
+                break
+            }
+        } while ((Get-Date) -lt $deadline)
+        if ($state -ne "Registered") {
+            throw "Provider '$Namespace' registration did not complete in time."
+        }
+    }
+}
+
+function Ensure-FunctionIndexed {
+    param(
+        [string]$SubscriptionId,
+        [string]$ResourceGroup,
+        [string]$FunctionAppName,
+        [string]$FunctionName
+    )
+
+    $expected = "$FunctionAppName/$FunctionName"
+    $deadline = (Get-Date).AddMinutes(6)
+    do {
+        $functions = az functionapp function list `
+          --resource-group $ResourceGroup `
+          --name $FunctionAppName `
+          --query "[].name" -o tsv 2>$null
+        if ($functions -and ($functions -split "`n" | Where-Object { $_ -eq $expected })) {
+            return
+        }
+
+        az rest --method post --uri "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.Web/sites/$FunctionAppName/syncfunctiontriggers?api-version=2025-05-01" | Out-Null
+        Start-Sleep -Seconds 10
+    } while ((Get-Date) -lt $deadline)
+
+    throw "Function '$expected' was not indexed after trigger sync retries."
+}
+
 if (-not (Test-Path $ConfigPath)) {
     throw "Config file not found: $ConfigPath"
 }
@@ -107,6 +153,7 @@ $resourceGroup = Select-Name $config.azure.resource_group_name "rg-$prefix"
 $storageAccount = Select-Name $config.naming.storage_account_name (Normalize-StorageAccountName -Value $prefix)
 $functionAppName = Select-Name $config.naming.function_app_name "func-$prefix"
 $openAIAccount = Select-Name $config.naming.openai_account_name "aoai-$prefix"
+$defaultAppInsightsName = "appi-$prefix"
 
 $sourceContainer = $config.storage.source_container
 $sinkContainer = $config.storage.sink_container
@@ -122,6 +169,7 @@ $ourCompanyProfileBlobName = $runtimeConfig.context.our_company_profile_blob_nam
 $researchPromptBlobName = $runtimeConfig.agents.research.system_prompt_blob_name
 $strategyPromptBlobName = $runtimeConfig.agents.strategy.system_prompt_blob_name
 $functionDefinitionBlobName = $runtimeConfig.function_call.definition_blob_name
+$indicatorFileName = $runtimeConfig.storage.indicator_file_name
 $ourCompanyProfileAssetPath = Join-Path $assetsRoot "shared/our_company_profile.txt"
 $researchPromptAssetPath = Join-Path $assetsRoot "prompts/research/system_prompt.txt"
 $strategyPromptAssetPath = Join-Path $assetsRoot "prompts/strategy/system_prompt.txt"
@@ -129,6 +177,7 @@ $functionDefinitionAssetPath = Join-Path $assetsRoot "function_definitions/sales
 
 Write-Step "Using subscription: $subscriptionId"
 az account set --subscription $subscriptionId
+Ensure-ProviderRegistered -Namespace "Microsoft.EventGrid"
 
 Write-Step "Ensuring resource group '$resourceGroup'."
 $rgExists = az group exists --name $resourceGroup -o tsv
@@ -252,6 +301,30 @@ if ([bool]$config.deployment.deploy_function_resources) {
     Write-Step "Ensuring system-assigned managed identity on function app."
     az functionapp identity assign --name $functionAppName --resource-group $resourceGroup --identities [system] | Out-Null
 
+    Write-Step "Ensuring exactly one Application Insights component."
+    $existingInsightsName = az resource list `
+      --resource-group $resourceGroup `
+      --resource-type "microsoft.insights/components" `
+      --query "[0].name" -o tsv
+    $appInsightsName = $existingInsightsName
+    if ([string]::IsNullOrWhiteSpace($appInsightsName)) {
+        $appInsightsName = $defaultAppInsightsName
+        az monitor app-insights component create `
+          --app $appInsightsName `
+          --resource-group $resourceGroup `
+          --location $location `
+          --application-type web `
+          --kind web | Out-Null
+    }
+    $appInsightsConnString = az monitor app-insights component show `
+      --resource-group $resourceGroup `
+      --app $appInsightsName `
+      --query connectionString -o tsv
+    $appInsightsInstrumentationKey = az monitor app-insights component show `
+      --resource-group $resourceGroup `
+      --app $appInsightsName `
+      --query instrumentationKey -o tsv
+
     $openAIEndpoint = "https://$openAIAccount.openai.azure.com/"
     $appSettings = @(
         "APP_CONFIG_PATH=$($config.app_settings.app_config_path)",
@@ -260,7 +333,9 @@ if ([bool]$config.deployment.deploy_function_resources) {
         "AZURE_OPENAI_ENDPOINT=$openAIEndpoint",
         "AZURE_OPENAI_DEPLOYMENT=$($config.openai.deployment_name)",
         "SOURCE_CONTAINER=$sourceContainer",
-        "OUR_COMPANY_PROFILE_BLOB_NAME=$ourCompanyProfileBlobName"
+        "OUR_COMPANY_PROFILE_BLOB_NAME=$ourCompanyProfileBlobName",
+        "APPLICATIONINSIGHTS_CONNECTION_STRING=$appInsightsConnString",
+        "APPINSIGHTS_INSTRUMENTATIONKEY=$appInsightsInstrumentationKey"
     )
     if (-not [string]::IsNullOrWhiteSpace($config.app_settings.openai_api_version)) {
         $appSettings += "AZURE_OPENAI_API_VERSION=$($config.app_settings.openai_api_version)"
@@ -270,6 +345,39 @@ if ([bool]$config.deployment.deploy_function_resources) {
       --resource-group $resourceGroup `
       --name $functionAppName `
       --settings $appSettings | Out-Null
+
+    Write-Step "Ensuring Event Grid subscription for blob-created indicator events."
+    $sourceResourceId = az storage account show `
+      --name $storageAccount `
+      --resource-group $resourceGroup `
+      --query id -o tsv
+    $eventSubName = "evg-source-indicator-created"
+    $eventSubCount = az eventgrid event-subscription list `
+      --source-resource-id $sourceResourceId `
+      --query "[?name=='$eventSubName'] | length(@)" -o tsv
+
+    Ensure-FunctionIndexed `
+      -SubscriptionId $subscriptionId `
+      -ResourceGroup $resourceGroup `
+      -FunctionAppName $functionAppName `
+      -FunctionName "CompanyResearchBlobTrigger"
+
+    $functionResourceId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$functionAppName/functions/CompanyResearchBlobTrigger"
+    if ($eventSubCount -ne "0") {
+        az eventgrid event-subscription delete `
+          --name $eventSubName `
+          --source-resource-id $sourceResourceId | Out-Null
+        Start-Sleep -Seconds 5
+    }
+
+    az eventgrid event-subscription create `
+      --name $eventSubName `
+      --source-resource-id $sourceResourceId `
+      --included-event-types Microsoft.Storage.BlobCreated `
+      --subject-begins-with "/blobServices/default/containers/$sourceContainer/blobs/" `
+      --subject-ends-with $indicatorFileName `
+      --endpoint-type azurefunction `
+      --endpoint $functionResourceId | Out-Null
 }
 
 if ([bool]$config.deployment.deploy_openai_resources) {

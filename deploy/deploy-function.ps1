@@ -35,3 +35,11 @@ if ([string]::IsNullOrWhiteSpace($config.naming.function_app_name)) {
 
 Write-Host "[deploy-function] Publishing to $functionAppName ..."
 func azure functionapp publish $functionAppName --python
+
+# Ensure Azure management plane has the latest function trigger metadata.
+$subscriptionId = $config.azure.subscription_id
+if ([string]::IsNullOrWhiteSpace($subscriptionId)) {
+    $subscriptionId = az account show --query id -o tsv
+}
+az rest --method post --uri "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$functionAppName/syncfunctiontriggers?api-version=2025-05-01" | Out-Null
+Write-Host "[deploy-function] Trigger metadata sync requested."
