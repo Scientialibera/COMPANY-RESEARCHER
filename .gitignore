@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local Azure Functions settings (can contain secrets)
+local.settings.json
+
+# Build and runtime artifacts
+output/
+dist/
+build/
+*.zip
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

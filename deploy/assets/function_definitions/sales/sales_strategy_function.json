@@ -1,0 +1,33 @@
+{
+  "name": "classify_revenue_and_generate_sales_pitch",
+  "description": "Classify company revenue bracket and generate five tailored sales ideas.",
+  "strict": true,
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "revenue_class": {
+        "type": "string",
+        "enum": [
+          "less_than_500_m",
+          "between_500_m_and_5_b",
+          "more_than_5_b"
+        ],
+        "description": "Revenue bucket classification for the target company."
+      },
+      "sales_pitch": {
+        "type": "array",
+        "description": "Exactly five targeted sales ideas to present to this client.",
+        "minItems": 5,
+        "maxItems": 5,
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "required": [
+      "revenue_class",
+      "sales_pitch"
+    ]
+  }
+}

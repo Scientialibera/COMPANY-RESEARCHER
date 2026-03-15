@@ -1,0 +1,54 @@
+[app]
+environment = "dev"
+log_level = "INFO"
+
+[storage]
+account_name = ""
+source_container_name = "source-companies"
+sink_container_name = "research-output"
+additional_container_name = "additional-company-info"
+prompts_container_name = "prompts"
+function_definitions_container_name = "function-definitions"
+company_metadata_file_name = "company_profile.json"
+indicator_file_name = "_READY"
+additional_company_info_enabled = true
+
+[openai]
+endpoint = "https://<your-openai-resource>.openai.azure.com/"
+deployment = "gpt-4-1"
+api_version = ""
+api_key = ""
+max_tokens = 4000
+temperature = 0.2
+
+[context]
+our_company_profile_blob_name = "shared/our_company_profile.txt"
+company_fields = [
+  "company_name",
+  "industry",
+  "hq_country",
+  "employee_count",
+  "website",
+  "products_services",
+  "notes"
+]
+
+[agents.research]
+name = "CompanyDeepResearcher"
+system_prompt_blob_name = "research/system_prompt.txt"
+enable_web_search = true
+
+[agents.strategy]
+name = "CompanySalesStrategist"
+system_prompt_blob_name = "strategy/system_prompt.txt"
+enable_web_search = true
+
+[function_call]
+definition_blob_name = "sales/sales_strategy_function.json"
+enforce_single_tool_call = true
+
+[output]
+push_to_sink = false
+local_output_dir = "output"
+file_name = "research_result.json"
+append_utc_timestamp_to_sink_file_name = true

@@ -1,0 +1,9 @@
+{
+  "company_name": "Sample Company",
+  "industry": "Technology",
+  "hq_country": "US",
+  "employee_count": 5000,
+  "website": "https://example.com",
+  "products_services": "Cloud software and data services",
+  "notes": "Replace this file with your real company profile before upload."
+}

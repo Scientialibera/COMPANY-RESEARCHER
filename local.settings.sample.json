@@ -1,0 +1,9 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "SOURCE_CONTAINER": "source-companies",
+    "APP_CONFIG_PATH": "config/app_config.toml"
+  }
+}

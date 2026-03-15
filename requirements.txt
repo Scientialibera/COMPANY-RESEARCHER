@@ -1,0 +1,6 @@
+azure-functions
+azure-identity
+azure-storage-blob
+--pre
+agent-framework
+openai>=1.0.0
