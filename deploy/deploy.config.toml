@@ -4,7 +4,7 @@ location = "eastus"
 resource_group_name = ""
 
 [naming]
-prefix = "companyresearcherv3"
+prefix = "companyresearcherv4"
 storage_account_name = ""
 function_app_name = ""
 app_service_plan_name = ""
