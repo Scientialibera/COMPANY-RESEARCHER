@@ -23,6 +23,48 @@ function Select-Name {
     return $Configured
 }
 
+function Ensure-RoleAssignment {
+    param(
+        [string]$PrincipalId,
+        [string]$Scope,
+        [string]$Role,
+        [string]$PrincipalType = "User"
+    )
+    $count = az role assignment list `
+      --assignee-object-id $PrincipalId `
+      --scope $Scope `
+      --query "[?roleDefinitionName=='$Role'] | length(@)" `
+      -o tsv
+    if ($LASTEXITCODE -ne 0) { throw "Failed to query role assignments for '$Role'." }
+    if ($count -eq "0") {
+        Write-Step "Assigning role '$Role' on scope '$Scope'."
+        az role assignment create `
+          --assignee-object-id $PrincipalId `
+          --assignee-principal-type $PrincipalType `
+          --role $Role `
+          --scope $Scope | Out-Null
+    }
+}
+
+function Upload-BlobFromFile {
+    param(
+        [string]$StorageAccount,
+        [string]$Container,
+        [string]$BlobName,
+        [string]$FilePath
+    )
+    if (-not (Test-Path $FilePath)) {
+        throw "Required deployment asset not found: $FilePath"
+    }
+    az storage blob upload `
+      --auth-mode login `
+      --account-name $StorageAccount `
+      --container-name $Container `
+      --name $BlobName `
+      --file $FilePath `
+      --overwrite true | Out-Null
+}
+
 function Normalize-StorageAccountName {
     param([string]$Value)
     $normalized = ($Value.ToLower() -replace "[^a-z0-9]", "")
@@ -128,6 +170,18 @@ $appConfigJson = python -c "import json, pathlib, tomllib; p=pathlib.Path(r'$app
 if ($LASTEXITCODE -ne 0) { throw "Failed to parse app config file: $appConfigPath" }
 $runtimeConfig = $appConfigJson | ConvertFrom-Json
 $indicatorFileName = $runtimeConfig.storage.indicator_file_name
+$ourCompanyProfileBlobName = $runtimeConfig.context.our_company_profile_blob_name
+$researchPromptBlobName = $runtimeConfig.agents.research.system_prompt_blob_name
+$strategyPromptBlobName = $runtimeConfig.agents.strategy.system_prompt_blob_name
+$functionDefinitionBlobName = $runtimeConfig.function_call.definition_blob_name
+$additionalContainer = $config.storage.additional_container
+$promptsContainer = $config.storage.prompts_container
+$functionDefinitionsContainer = $config.storage.function_definitions_container
+$assetsRoot = Join-Path $PSScriptRoot "assets"
+$ourCompanyProfileAssetPath = Join-Path $assetsRoot "shared/our_company_profile.txt"
+$researchPromptAssetPath = Join-Path $assetsRoot "prompts/research/system_prompt.txt"
+$strategyPromptAssetPath = Join-Path $assetsRoot "prompts/strategy/system_prompt.txt"
+$functionDefinitionAssetPath = Join-Path $assetsRoot "function_definitions/sales/sales_strategy_function.json"
 
 if ([string]::IsNullOrWhiteSpace($config.naming.function_app_name)) {
     $detected = az functionapp list --resource-group $resourceGroup --query "[0].name" -o tsv 2>$null
@@ -146,11 +200,23 @@ if ([string]::IsNullOrWhiteSpace($config.naming.storage_account_name)) {
 Write-Step "Publishing to $functionAppName ..."
 func azure functionapp publish $functionAppName --python
 
+Write-Step "Ensuring executor blob data role for asset seeding."
+$executorObjectId = az ad signed-in-user show --query id -o tsv
+$storageScope = az storage account show --resource-group $resourceGroup --name $storageAccount --query id -o tsv
+Ensure-RoleAssignment -PrincipalId $executorObjectId -Scope $storageScope -Role "Storage Blob Data Owner"
+
+Write-Step "Seeding runtime blobs."
+Upload-BlobFromFile -StorageAccount $storageAccount -Container $additionalContainer -BlobName $ourCompanyProfileBlobName -FilePath $ourCompanyProfileAssetPath
+Upload-BlobFromFile -StorageAccount $storageAccount -Container $promptsContainer -BlobName $researchPromptBlobName -FilePath $researchPromptAssetPath
+Upload-BlobFromFile -StorageAccount $storageAccount -Container $promptsContainer -BlobName $strategyPromptBlobName -FilePath $strategyPromptAssetPath
+Upload-BlobFromFile -StorageAccount $storageAccount -Container $functionDefinitionsContainer -BlobName $functionDefinitionBlobName -FilePath $functionDefinitionAssetPath
+
 # Ensure Azure management plane has the latest function trigger metadata.
 $subscriptionId = $config.azure.subscription_id
 if ([string]::IsNullOrWhiteSpace($subscriptionId)) {
     $subscriptionId = az account show --query id -o tsv
 }
+az account set --subscription $subscriptionId | Out-Null
 az rest --method post --uri "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Web/sites/$functionAppName/syncfunctiontriggers?api-version=2025-05-01" | Out-Null
 Write-Step "Trigger metadata sync requested."
 

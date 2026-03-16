@@ -64,7 +64,7 @@ If Azure OpenAI soft-delete blocks recreation, change only `naming.prefix` and r
 
 ### 3) Put your prompts and company profile assets in repo
 
-These files are uploaded by `deploy/deploy-infra.ps1` on every run:
+These files are uploaded by `deploy/deploy-function.ps1` on every run:
 
 - `deploy/assets/shared/our_company_profile.txt` -> blob `additional-company-info/shared/our_company_profile.txt`
 - `deploy/assets/prompts/research/system_prompt.txt` -> blob `prompts/research/system_prompt.txt`
@@ -79,10 +79,8 @@ pwsh deploy/deploy-infra.ps1 -ConfigPath "deploy/deploy.config.toml"
 
 This script idempotently:
 - creates RG, storage account, containers, Function App, OpenAI resources
-- uploads shared profile + stage prompts + function definition to blob storage
 - enables managed identity
 - assigns RBAC for both function identity and script executor (no keys required)
-- registers `Microsoft.EventGrid`, syncs function triggers, and creates storage->function Event Grid subscription (`--endpoint-type azurefunction`) for `_READY` blobs
 - sets Function App settings
 
 ### 5) Deploy function code
@@ -90,6 +88,10 @@ This script idempotently:
 ```powershell
 pwsh deploy/deploy-function.ps1 -ConfigPath "deploy/deploy.config.toml"
 ```
+
+This script now also:
+- uploads shared profile + stage prompts + function definition to blob storage
+- syncs triggers and ensures Event Grid subscription for `_READY` blob events
 
 ### 6) Upload company input
 

@@ -65,28 +65,6 @@ function Ensure-RoleAssignment {
     }
 }
 
-function Upload-BlobFromFile {
-    param(
-        [string]$StorageAccount,
-        [string]$Container,
-        [string]$BlobName,
-        [string]$FilePath
-    )
-    if (-not (Test-Path $FilePath)) {
-        throw "Required deployment asset not found: $FilePath"
-    }
-    az storage blob upload `
-      --auth-mode login `
-      --account-name $StorageAccount `
-      --container-name $Container `
-      --name $BlobName `
-      --file $FilePath `
-      --overwrite true | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to upload blob '$BlobName' to container '$Container'."
-    }
-}
-
 if (-not (Test-Path $ConfigPath)) {
     throw "Config file not found: $ConfigPath"
 }
@@ -115,19 +93,10 @@ $additionalContainer = $config.storage.additional_container
 $promptsContainer = $config.storage.prompts_container
 $functionDefinitionsContainer = $config.storage.function_definitions_container
 $appConfigPath = $config.app_settings.app_config_path
-$assetsRoot = Join-Path $PSScriptRoot "assets"
 $appConfigJson = python -c "import json, pathlib, tomllib; p=pathlib.Path(r'$appConfigPath'); print(json.dumps(tomllib.loads(p.read_text(encoding='utf-8'))))"
 if ($LASTEXITCODE -ne 0) { throw "Failed to parse app config file: $appConfigPath" }
 $runtimeConfig = $appConfigJson | ConvertFrom-Json
 $ourCompanyProfileBlobName = $runtimeConfig.context.our_company_profile_blob_name
-$researchPromptBlobName = $runtimeConfig.agents.research.system_prompt_blob_name
-$strategyPromptBlobName = $runtimeConfig.agents.strategy.system_prompt_blob_name
-$functionDefinitionBlobName = $runtimeConfig.function_call.definition_blob_name
-$indicatorFileName = $runtimeConfig.storage.indicator_file_name
-$ourCompanyProfileAssetPath = Join-Path $assetsRoot "shared/our_company_profile.txt"
-$researchPromptAssetPath = Join-Path $assetsRoot "prompts/research/system_prompt.txt"
-$strategyPromptAssetPath = Join-Path $assetsRoot "prompts/strategy/system_prompt.txt"
-$functionDefinitionAssetPath = Join-Path $assetsRoot "function_definitions/sales/sales_strategy_function.json"
 
 Write-Step "Using subscription: $subscriptionId"
 az account set --subscription $subscriptionId
@@ -176,27 +145,6 @@ foreach ($container in @($sourceContainer, $sinkContainer, $additionalContainer,
     }
 }
 
-Write-Step "Uploading shared our-company profile blob '$ourCompanyProfileBlobName'."
-Upload-BlobFromFile `
-  -StorageAccount $storageAccount `
-  -Container $additionalContainer `
-  -BlobName $ourCompanyProfileBlobName `
-  -FilePath $ourCompanyProfileAssetPath
-
-Write-Step "Uploading research prompt blob '$researchPromptBlobName'."
-Upload-BlobFromFile `
-  -StorageAccount $storageAccount `
-  -Container $promptsContainer `
-  -BlobName $researchPromptBlobName `
-  -FilePath $researchPromptAssetPath
-
-Write-Step "Uploading strategy prompt blob '$strategyPromptBlobName'."
-Upload-BlobFromFile `
-  -StorageAccount $storageAccount `
-  -Container $promptsContainer `
-  -BlobName $strategyPromptBlobName `
-  -FilePath $strategyPromptAssetPath
-
 Write-Step "Ensuring function-definitions container '$functionDefinitionsContainer'."
 $functionDefContainerExists = az storage container exists `
   --account-name $storageAccount `
@@ -209,13 +157,6 @@ if ($functionDefContainerExists -ne "true") {
       --name $functionDefinitionsContainer `
       --auth-mode login | Out-Null
 }
-
-Write-Step "Uploading function definition blob '$functionDefinitionBlobName'."
-Upload-BlobFromFile `
-  -StorageAccount $storageAccount `
-  -Container $functionDefinitionsContainer `
-  -BlobName $functionDefinitionBlobName `
-  -FilePath $functionDefinitionAssetPath
 
 if ([bool]$config.deployment.deploy_function_resources) {
     Write-Step "Ensuring function app '$functionAppName'."
