@@ -31,18 +31,18 @@ class TwoAgentWorkflow:
 
         responses_client = build_responses_client(self.config.openai)
 
-        # Step 1: deep-research agent.
-        research_report = await run_research_agent(
+        research_report, research_reasoning = await run_research_agent(
             responses_client=responses_client,
             agent_config=self.config.research_agent,
+            openai_config=self.config.openai,
             system_prompt=research_prompt,
             company_context=company_context,
         )
 
-        # Step 2: strategy agent with function calling.
-        function_payload = await run_strategy_agent(
+        function_payload, strategy_reasoning = await run_strategy_agent(
             responses_client=responses_client,
             agent_config=self.config.strategy_agent,
+            openai_config=self.config.openai,
             system_prompt=strategy_prompt,
             research_report=research_report,
             additional_info_text=additional_context,
@@ -51,10 +51,18 @@ class TwoAgentWorkflow:
             enforce_single_tool_call=self.config.function_call.enforce_single_tool_call,
         )
 
+        reasoning: dict[str, list[str]] | None = None
+        if self.config.openai.reasoning_model:
+            reasoning = {
+                "research_agent": research_reasoning,
+                "strategy_agent": strategy_reasoning,
+            }
+
         result_json = build_result_payload(
             company_folder=request.company_folder,
             research_report=research_report,
             classification_payload=function_payload,
+            reasoning=reasoning,
         )
         output_uri = write_result(
             config=self.config,
@@ -68,4 +76,5 @@ class TwoAgentWorkflow:
             research_report=research_report,
             classification_payload=function_payload,
             output_uri=output_uri,
+            reasoning=reasoning,
         )

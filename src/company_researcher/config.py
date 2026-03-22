@@ -99,6 +99,14 @@ def load_app_config() -> AppConfig:
             api_key=api_key,
             max_tokens=openai_raw["max_tokens"],
             temperature=openai_raw["temperature"],
+            reasoning_model=_parse_bool(
+                os.getenv("AZURE_OPENAI_REASONING_MODEL"),
+                openai_raw.get("reasoning_model", False),
+            ),
+            reasoning_effort=os.getenv(
+                "AZURE_OPENAI_REASONING_EFFORT",
+                openai_raw.get("reasoning_effort", "medium"),
+            ),
         ),
         our_company_profile_blob_name=our_company_profile_blob_name,
         context_fields=context_raw["company_fields"],

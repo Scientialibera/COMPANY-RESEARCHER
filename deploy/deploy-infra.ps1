@@ -230,12 +230,16 @@ if ([bool]$config.deployment.deploy_function_resources) {
     }
 
     $openAIEndpoint = "https://$openAIAccount.openai.azure.com/"
+    $reasoningModel = if ($config.app_settings.PSObject.Properties["reasoning_model"]) { $config.app_settings.reasoning_model.ToString().ToLower() } else { "true" }
+    $reasoningEffort = if ($config.app_settings.PSObject.Properties["reasoning_effort"]) { $config.app_settings.reasoning_effort } else { "medium" }
     $appSettings = @(
         "APP_CONFIG_PATH=$($config.app_settings.app_config_path)",
         "STORAGE_ACCOUNT_NAME=$storageAccount",
         "OUTPUT_PUSH_TO_SINK=$($config.app_settings.output_push_to_sink.ToString().ToLower())",
         "AZURE_OPENAI_ENDPOINT=$openAIEndpoint",
         "AZURE_OPENAI_DEPLOYMENT=$($config.openai.deployment_name)",
+        "AZURE_OPENAI_REASONING_MODEL=$reasoningModel",
+        "AZURE_OPENAI_REASONING_EFFORT=$reasoningEffort",
         "SOURCE_CONTAINER=$sourceContainer",
         "OUR_COMPANY_PROFILE_BLOB_NAME=$ourCompanyProfileBlobName",
         "APPLICATIONINSIGHTS_CONNECTION_STRING=$appInsightsConnString",

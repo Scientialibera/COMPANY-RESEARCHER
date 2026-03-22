@@ -15,11 +15,13 @@ additional_company_info_enabled = true
 
 [openai]
 endpoint = "https://<your-openai-resource>.openai.azure.com/"
-deployment = "gpt-4-1"
+deployment = "gpt-5-mini"
 api_version = ""
 api_key = ""
 max_tokens = 4000
 temperature = 0.2
+reasoning_model = true
+reasoning_effort = "medium"
 
 [context]
 our_company_profile_blob_name = "shared/our_company_profile.txt"

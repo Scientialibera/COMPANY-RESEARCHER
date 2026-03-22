@@ -22,3 +22,20 @@ def build_responses_client(config: OpenAIConfig) -> AzureOpenAIResponsesClient:
         kwargs["credential"] = DefaultAzureCredential()
 
     return AzureOpenAIResponsesClient(**kwargs)
+
+
+def build_agent_chat_options(config: OpenAIConfig) -> dict[str, Any]:
+    """Build additional_chat_options appropriate for the model type.
+
+    Reasoning models (GPT-5-mini, o-series) do not accept temperature or
+    max_tokens; they use reasoning.effort and reasoning.summary instead.
+    """
+    if not config.reasoning_model:
+        return {}
+
+    return {
+        "reasoning": {
+            "effort": config.reasoning_effort,
+            "summary": "auto",
+        },
+    }

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .compat import create_agent_compat
+from .compat import create_agent_compat, extract_reasoning_summaries
 from ..function_calling import validate_sales_strategy_payload
-from ..models import AgentConfig
+from ..models import AgentConfig, OpenAIConfig
 
 
 class StrategyToolCollector:
@@ -29,24 +29,29 @@ class StrategyToolCollector:
 async def run_strategy_agent(
     responses_client: object,
     agent_config: AgentConfig,
+    openai_config: OpenAIConfig,
     system_prompt: str,
     research_report: str,
     additional_info_text: str,
     our_company_info: str,
     function_definition: dict[str, Any],
     enforce_single_tool_call: bool,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], list[str]]:
+    """Run strategy agent and return (payload, reasoning_summaries)."""
     collector = StrategyToolCollector()
 
-    tools = [collector.build_tool()]
+    tools: list[Any] = [collector.build_tool()]
     if agent_config.enable_web_search:
         tools.insert(0, {"type": "web_search_preview"})
+
+    from .factory import build_agent_chat_options
 
     agent = create_agent_compat(
         responses_client,
         name=agent_config.name,
         instructions=system_prompt,
         tools=tools,
+        additional_chat_options=build_agent_chat_options(openai_config),
     )
 
     prompt = (
@@ -63,7 +68,8 @@ async def run_strategy_agent(
             "exactly once and do not emit final text before tool call."
         )
 
-    await agent.run(prompt)
+    result = await agent.run(prompt)
     if collector.payload is None:
         raise RuntimeError("Strategy tool was not called by the model.")
-    return collector.payload
+    reasoning = extract_reasoning_summaries(result) if openai_config.reasoning_model else []
+    return collector.payload, reasoning

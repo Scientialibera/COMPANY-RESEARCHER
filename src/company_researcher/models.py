@@ -40,6 +40,8 @@ class OpenAIConfig:
     api_key: str
     max_tokens: int
     temperature: float
+    reasoning_model: bool
+    reasoning_effort: str
 
 
 @dataclass(frozen=True)
@@ -93,3 +95,4 @@ class ProcessResult:
     research_report: str
     classification_payload: dict[str, Any]
     output_uri: str
+    reasoning: dict[str, list[str]] | None = None

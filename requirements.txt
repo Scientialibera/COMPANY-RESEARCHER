@@ -1,6 +1,9 @@
 azure-functions
 azure-identity
 azure-storage-blob
+opentelemetry-api==1.39.1
+opentelemetry-sdk==1.39.1
+opentelemetry-semantic-conventions-ai==0.4.13
 --pre
-agent-framework
+agent-framework==1.0.0b251223
 openai>=1.0.0

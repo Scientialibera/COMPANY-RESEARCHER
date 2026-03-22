@@ -21,13 +21,16 @@ def build_result_payload(
     company_folder: str,
     research_report: str,
     classification_payload: dict[str, Any],
+    reasoning: dict[str, list[str]] | None = None,
 ) -> str:
-    document = {
+    document: dict[str, Any] = {
         "company_folder": company_folder,
         "generated_at_utc": datetime.now(tz=UTC).isoformat(),
         "research_report": research_report,
         "function_result": classification_payload,
     }
+    if reasoning is not None:
+        document["reasoning"] = reasoning
     return json.dumps(document, indent=2, ensure_ascii=True)
 
 
