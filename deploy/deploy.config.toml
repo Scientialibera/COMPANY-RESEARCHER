@@ -23,7 +23,7 @@ model_name = "gpt-5-mini"
 model_version = "2025-08-07"
 sku_name = "S0"
 deployment_sku_name = "GlobalStandard"
-capacity = 150
+capacity = 500
 
 [function_app]
 runtime = "python"
